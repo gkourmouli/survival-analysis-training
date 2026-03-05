@@ -1,0 +1,815 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Weibull Likelihood Explorer</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@300;400;500&display=swap');
+
+  :root {
+    --bg:      #0d0f14;
+    --surface: #13161e;
+    --border:  #1e2330;
+    --text:    #e8eaf0;
+    --muted:   #5a6070;
+    --lam:     #f7a94b;
+    --gam:     #a78bfa;
+    --ci:      #4fc4cf;
+    --null:    #f472b6;
+    --quad:    #34d399;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Mono', monospace;
+    min-height: 100vh;
+    padding: 40px 32px 60px;
+  }
+
+  header {
+    margin-bottom: 32px;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 22px;
+  }
+  header h1 { font-family: 'DM Serif Display', serif; font-size: 2.2rem; color: #fff; }
+  header p  { color: var(--muted); font-size: 0.78rem; margin-top: 6px; letter-spacing: 0.05em; }
+
+  /* Tabs */
+  .tabs {
+    display: flex; gap: 4px; margin-bottom: 20px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 4px; width: fit-content;
+  }
+  .tab {
+    padding: 7px 18px; font-family: 'DM Mono', monospace;
+    font-size: 0.72rem; letter-spacing: 0.06em; text-transform: uppercase;
+    border: none; border-radius: 5px; cursor: pointer;
+    color: var(--muted); background: none; transition: all 0.15s;
+  }
+  .tab.active { background: #1e2330; color: var(--text); }
+
+  .view { display: none; }
+  .view.active { display: block; }
+
+  .layout {
+    display: grid;
+    grid-template-columns: 1fr 300px;
+    gap: 20px;
+    align-items: start;
+  }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px 22px 20px;
+  }
+  .card h2 { font-family: 'DM Serif Display', serif; font-size: 1.1rem; color: #fff; margin-bottom: 4px; }
+  .card p.sub { font-size: 0.7rem; color: var(--muted); margin-bottom: 16px; line-height: 1.6; }
+  .chart-wrap    { position: relative; height: 360px; }
+  .chart-wrap-sq { position: relative; height: 420px; }
+
+  .side { display: flex; flex-direction: column; gap: 16px; }
+
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 18px 16px;
+  }
+  .panel h3 {
+    font-size: 0.72rem; text-transform: uppercase;
+    letter-spacing: 0.1em; color: var(--muted); margin-bottom: 14px;
+  }
+
+  .ctrl { margin-bottom: 12px; }
+  .ctrl label {
+    display: flex; justify-content: space-between;
+    font-size: 0.68rem; color: var(--muted);
+    margin-bottom: 5px; text-transform: uppercase; letter-spacing: 0.06em;
+  }
+  .ctrl label span { color: var(--text); }
+
+  input[type=range] {
+    width: 100%; -webkit-appearance: none;
+    height: 3px; border-radius: 2px;
+    background: var(--border); outline: none; cursor: pointer;
+  }
+  .lam-range::-webkit-slider-thumb { -webkit-appearance:none;width:13px;height:13px;border-radius:50%;background:var(--lam);cursor:pointer; }
+  .gam-range::-webkit-slider-thumb { -webkit-appearance:none;width:13px;height:13px;border-radius:50%;background:var(--gam);cursor:pointer; }
+  .n-range::-webkit-slider-thumb   { -webkit-appearance:none;width:13px;height:13px;border-radius:50%;background:#888;cursor:pointer; }
+
+  .toggles { display: flex; flex-direction: column; gap: 7px; }
+  .toggle-btn {
+    display: flex; align-items: center; gap: 8px;
+    background: none; border: 1px solid var(--border);
+    border-radius: 6px; padding: 7px 10px;
+    font-family: 'DM Mono', monospace; font-size: 0.68rem;
+    cursor: pointer; transition: all 0.15s; text-align: left;
+  }
+  .toggle-btn.active { border-color: currentColor; }
+  .toggle-btn .dot { width:8px;height:8px;border-radius:50%;flex-shrink:0; }
+
+  .btn-lam  { color: var(--lam);  } .btn-lam  .dot { background: var(--lam);  }
+  .btn-gam  { color: var(--gam);  } .btn-gam  .dot { background: var(--gam);  }
+  .btn-ci   { color: var(--ci);   } .btn-ci   .dot { background: var(--ci);   }
+  .btn-null { color: var(--null); } .btn-null .dot { background: var(--null); }
+  .btn-quad { color: var(--quad); } .btn-quad .dot { background: var(--quad); }
+
+  .stat-row {
+    display: flex; justify-content: space-between;
+    font-size: 0.68rem; padding: 5px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .stat-row:last-child { border-bottom: none; }
+  .stat-row .key { color: var(--muted); }
+  .stat-row .val { color: var(--text); }
+
+  /* Profile selector */
+  .profile-select { display: flex; gap: 6px; margin-bottom: 14px; }
+  .ps-btn {
+    flex: 1; padding: 6px 4px;
+    font-family: 'DM Mono', monospace; font-size: 0.66rem;
+    letter-spacing: 0.05em; text-transform: uppercase;
+    border: 1px solid var(--border); border-radius: 5px;
+    color: var(--muted); background: none; cursor: pointer; transition: all 0.15s;
+  }
+  .ps-btn.active-lam { border-color: var(--lam); color: var(--lam); }
+  .ps-btn.active-gam { border-color: var(--gam); color: var(--gam); }
+
+  .regenerate {
+    width: 100%; margin-top: 10px; padding: 8px;
+    background: none; border: 1px solid var(--border);
+    border-radius: 6px; color: var(--muted);
+    font-family: 'DM Mono', monospace; font-size: 0.68rem;
+    cursor: pointer; transition: all 0.15s;
+    letter-spacing: 0.05em; text-transform: uppercase;
+  }
+  .regenerate:hover { border-color: var(--lam); color: var(--lam); }
+
+  /* Formula box */
+  .formula-box {
+    background: #0a0c10;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 14px;
+    margin-bottom: 16px;
+    font-size: 0.7rem;
+    color: #aab;
+    line-height: 2.0;
+  }
+  .fl { color: var(--lam); }
+  .fg { color: var(--gam); }
+  .fw { color: #e8eaf0; }
+
+  /* Contour legend */
+  .contour-legend .stat-row .key { display:flex;align-items:center;gap:6px; }
+  .swatch { width:22px;height:3px;border-radius:2px;display:inline-block; }
+
+  @media (max-width: 780px) { .layout { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Weibull Likelihood Explorer</h1>
+  <p>WEIBULL MODEL — LOG-LIKELIHOOD OVER SCALE λ AND SHAPE γ</p>
+</header>
+
+<div class="tabs">
+  <button class="tab active" id="tabProfile" onclick="switchView('profile')">Profile Likelihood</button>
+  <button class="tab"        id="tabContour" onclick="switchView('contour')">Joint Contour</button>
+</div>
+
+<!-- ══ VIEW 1: Profile ══ -->
+<div class="view active" id="viewProfile">
+  <div class="layout">
+
+    <div class="card">
+      <h2 id="profileTitle">Profile Log-Likelihood  ℓ(λ | γ̂)</h2>
+      <p class="sub">
+        The Weibull has two parameters — scale <span style="color:var(--lam)">λ</span> and shape <span style="color:var(--gam)">γ</span>.
+        The profile likelihood fixes one parameter at its MLE and traces the log-likelihood over the other.
+        Notice the <strong>asymmetry</strong>: both parameters are positive, so the curve has a longer right tail than a symmetric parabola.
+      </p>
+
+      <div class="formula-box">
+        <span class="fw">ℓ(λ,γ) =</span> <span class="fw">n·log</span><span class="fg">γ</span>
+        &minus; <span class="fw">n·</span><span class="fg">γ</span><span class="fw">·log</span><span class="fl">λ</span>
+        + <span class="fw">(</span><span class="fg">γ</span><span class="fw">−1)·Σlog tᵢ</span>
+        &minus; <span class="fw">Σ(tᵢ/</span><span class="fl">λ</span><span class="fw">)^</span><span class="fg">γ</span><br>
+        <span class="fw">MLE: solved numerically &nbsp;|&nbsp; No closed form for </span><span class="fg">γ̂</span>
+        <span class="fw">, but </span><span class="fl">λ̂</span><span class="fw"> = (Σtᵢ^</span><span class="fg">γ̂</span><span class="fw">/n)^(1/</span><span class="fg">γ̂</span><span class="fw">)</span>
+      </div>
+
+      <div class="chart-wrap"><canvas id="profileChart"></canvas></div>
+    </div>
+
+    <div class="side">
+      <div class="panel">
+        <h3>Profile over</h3>
+        <div class="profile-select">
+          <button class="ps-btn active-lam" id="psLam" onclick="setProfileParam('lambda')">λ (scale)</button>
+          <button class="ps-btn"            id="psGam" onclick="setProfileParam('gamma')">γ (shape)</button>
+        </div>
+        <h3>Data Generation</h3>
+        <div class="ctrl">
+          <label>True λ <span id="trueLamVal">2.00</span></label>
+          <input type="range" class="lam-range" id="trueLam" min="0.3" max="8" step="0.1" value="2">
+        </div>
+        <div class="ctrl">
+          <label>True γ <span id="trueGamVal">2.00</span></label>
+          <input type="range" class="gam-range" id="trueGam" min="0.3" max="5" step="0.1" value="2">
+        </div>
+        <div class="ctrl">
+          <label>Sample size n <span id="nValP">50</span></label>
+          <input type="range" class="n-range" id="sampleNP" min="10" max="300" step="5" value="50">
+        </div>
+        <button class="regenerate" id="regenBtnP">↺ Regenerate Sample</button>
+      </div>
+
+      <div class="panel">
+        <h3>Overlays</h3>
+        <div class="toggles">
+          <button class="toggle-btn btn-lam  active" id="togMle" ><span class="dot"></span> MLE marker</button>
+          <button class="toggle-btn btn-ci   active" id="togCi"  ><span class="dot"></span> 95% LR interval</button>
+          <button class="toggle-btn btn-null"        id="togNull"><span class="dot"></span> True parameter</button>
+          <button class="toggle-btn btn-quad active" id="togQuad"><span class="dot"></span> Quadratic approx.</button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h3>Estimates</h3>
+        <div class="stat-row"><span class="key">MLE λ̂</span>        <span class="val" id="sP_lam">—</span></div>
+        <div class="stat-row"><span class="key">MLE γ̂</span>        <span class="val" id="sP_gam">—</span></div>
+        <div class="stat-row"><span class="key">SE (profiled)</span> <span class="val" id="sP_se">—</span></div>
+        <div class="stat-row"><span class="key">95% LR CI</span>     <span class="val" id="sP_ci">—</span></div>
+        <div class="stat-row"><span class="key">LR stat (true)</span><span class="val" id="sP_lr">—</span></div>
+        <div class="stat-row"><span class="key">n</span>             <span class="val" id="sP_n">—</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ VIEW 2: Contour ══ -->
+<div class="view" id="viewContour">
+  <div class="layout">
+
+    <div class="card">
+      <h2>Joint Log-Likelihood Contours  ℓ(λ, γ)</h2>
+      <p class="sub">
+        Full 2D log-likelihood surface. The contours are <strong>not elliptical</strong> — the Weibull likelihood
+        surface is asymmetric and curved due to the nonlinear interaction between λ and γ.
+        Notice the <strong>positive correlation</strong> between the two parameters along the ridge.
+      </p>
+      <div class="chart-wrap-sq"><canvas id="contourCanvas"></canvas></div>
+    </div>
+
+    <div class="side">
+      <div class="panel">
+        <h3>Data Generation</h3>
+        <div class="ctrl">
+          <label>True λ <span id="trueLamValC">2.00</span></label>
+          <input type="range" class="lam-range" id="trueLamC" min="0.3" max="8" step="0.1" value="2">
+        </div>
+        <div class="ctrl">
+          <label>True γ <span id="trueGamValC">2.00</span></label>
+          <input type="range" class="gam-range" id="trueGamC" min="0.3" max="5" step="0.1" value="2">
+        </div>
+        <div class="ctrl">
+          <label>Sample size n <span id="nValC">50</span></label>
+          <input type="range" class="n-range" id="sampleNC" min="10" max="300" step="5" value="50">
+        </div>
+        <button class="regenerate" id="regenBtnC">↺ Regenerate Sample</button>
+      </div>
+
+      <div class="panel">
+        <h3>Estimates</h3>
+        <div class="stat-row"><span class="key">MLE λ̂</span>  <span class="val" id="sC_lam">—</span></div>
+        <div class="stat-row"><span class="key">MLE γ̂</span>  <span class="val" id="sC_gam">—</span></div>
+        <div class="stat-row"><span class="key">SE(λ̂)</span>  <span class="val" id="sC_selam">—</span></div>
+        <div class="stat-row"><span class="key">SE(γ̂)</span>  <span class="val" id="sC_segam">—</span></div>
+        <div class="stat-row"><span class="key">Corr(λ̂,γ̂)</span><span class="val" id="sC_corr">—</span></div>
+        <div class="stat-row"><span class="key">n</span>       <span class="val" id="sC_n">—</span></div>
+      </div>
+
+      <div class="panel contour-legend">
+        <h3>Confidence regions (χ² df=2)</h3>
+        <div class="stat-row"><span class="key"><span class="swatch" style="background:#f7a94b"></span> 50%</span><span class="val">Δ = 2.77</span></div>
+        <div class="stat-row"><span class="key"><span class="swatch" style="background:#4fc4cf"></span> 90%</span><span class="val">Δ = 4.61</span></div>
+        <div class="stat-row"><span class="key"><span class="swatch" style="background:#a78bfa"></span> 95%</span><span class="val">Δ = 5.99</span></div>
+        <div class="stat-row"><span class="key"><span class="swatch" style="background:#f472b6"></span> 99%</span><span class="val">Δ = 9.21</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── Weibull helpers ────────────────────────────────────────────────────────────
+
+// Weibull inverse CDF: t = λ * (-log U)^(1/γ)
+function weibullSample(lambda, gamma) {
+  return lambda * Math.pow(-Math.log(Math.random()), 1 / gamma);
+}
+
+function generateWeibull(lambda, gamma, n) {
+  return Array.from({length: n}, () => weibullSample(lambda, gamma));
+}
+
+// log-likelihood: ℓ(λ,γ) = n log γ - n γ log λ + (γ-1) Σlog tᵢ - Σ(tᵢ/λ)^γ
+function logLik(lambda, gamma, data) {
+  if (lambda <= 0 || gamma <= 0) return -Infinity;
+  const n     = data.length;
+  const sumLogT = data.reduce((s, t) => s + Math.log(t), 0);
+  const sumPow  = data.reduce((s, t) => s + Math.pow(t / lambda, gamma), 0);
+  return n * Math.log(gamma) - n * gamma * Math.log(lambda) + (gamma - 1) * sumLogT - sumPow;
+}
+
+// MLE: γ̂ via Newton-Raphson on score equation, then λ̂ = (Σtᵢ^γ̂/n)^(1/γ̂)
+function mle(data) {
+  const n = data.length;
+  const sumLogT = data.reduce((s, t) => s + Math.log(t), 0);
+  const meanLogT = sumLogT / n;
+
+  // Score wrt γ: n/γ - n log λ + Σlog tᵢ - Σ(tᵢ/λ)^γ log(tᵢ/λ) = 0
+  // Substituting λ = (Σtᵢ^γ/n)^(1/γ) gives profile score for γ:
+  // 1/γ + meanLogT - Σ(tᵢ^γ log tᵢ) / Σtᵢ^γ = 0
+
+  function profileScore(gamma) {
+    const sumTg    = data.reduce((s, t) => s + Math.pow(t, gamma), 0);
+    const sumTgLogT= data.reduce((s, t) => s + Math.pow(t, gamma) * Math.log(t), 0);
+    return 1 / gamma + meanLogT - sumTgLogT / sumTg;
+  }
+
+  // Newton-Raphson
+  let g = 1.0;
+  for (let i = 0; i < 200; i++) {
+    const f  = profileScore(g);
+    const dg = 1e-5;
+    const df = (profileScore(g + dg) - profileScore(g - dg)) / (2 * dg);
+    const step = f / df;
+    g -= Math.max(-0.5, Math.min(0.5, step));
+    g = Math.max(0.05, g);
+    if (Math.abs(step) < 1e-8) break;
+  }
+
+  const gamma_hat  = g;
+  const sumTg      = data.reduce((s, t) => s + Math.pow(t, gamma_hat), 0);
+  const lambda_hat = Math.pow(sumTg / n, 1 / gamma_hat);
+
+  return { lambda_hat, gamma_hat };
+}
+
+// Observed Fisher information via numerical Hessian
+function fisherInfo(lambda_hat, gamma_hat, data) {
+  const h = 1e-4;
+  const ll  = (l, g) => logLik(l, g, data);
+  const ll0 = ll(lambda_hat, gamma_hat);
+
+  const d2ll = (dl, dg) => ll(lambda_hat + dl, gamma_hat + dg);
+
+  const hll = (d2ll(h, 0) - 2*ll0 + d2ll(-h, 0)) / (h*h);
+  const hgg = (d2ll(0, h) - 2*ll0 + d2ll(0, -h)) / (h*h);
+  const hlg = (d2ll(h, h) - d2ll(h, -h) - d2ll(-h, h) + d2ll(-h, -h)) / (4*h*h);
+
+  // Invert 2x2: [[hll, hlg],[hlg, hgg]]
+  const det = hll * hgg - hlg * hlg;
+  const vll =  hgg / det;
+  const vgg =  hll / det;
+  const vlg = -hlg / det;
+  const corr = vlg / Math.sqrt(vll * vgg);
+
+  return {
+    se_lam: Math.sqrt(Math.max(0, -vll)),
+    se_gam: Math.sqrt(Math.max(0, -vgg)),
+    corr: -corr   // note: -H^{-1} gives variance
+  };
+}
+
+// Profile log-likelihood
+function profileLambda(lambda, data) {
+  // at fixed λ, maximise over γ numerically
+  const n = data.length;
+  let g = 1.0;
+  for (let iter = 0; iter < 100; iter++) {
+    const sumTg     = data.reduce((s, t) => s + Math.pow(t / lambda, g), 0);
+    const sumTgLogT = data.reduce((s, t) => s + Math.pow(t / lambda, g) * Math.log(t / lambda), 0);
+    const sumTgLog2 = data.reduce((s, t) => s + Math.pow(t / lambda, g) * Math.log(t / lambda)**2, 0);
+    const score = n / g + data.reduce((s, t) => s + Math.log(t / lambda), 0) - sumTgLogT;
+    const hess  = -n / (g * g) - sumTgLog2;
+    const step  = score / hess;
+    g -= Math.max(-0.5, Math.min(0.5, step));
+    g  = Math.max(0.05, g);
+    if (Math.abs(step) < 1e-7) break;
+  }
+  return logLik(lambda, g, data);
+}
+
+function profileGamma(gamma, data) {
+  const n    = data.length;
+  const sumTg = data.reduce((s, t) => s + Math.pow(t, gamma), 0);
+  const lambda = Math.pow(sumTg / n, 1 / gamma);
+  return logLik(lambda, gamma, data);
+}
+
+function lrCI_profile(mle_val, profileFn, data, lo_bound, hi_bound, ll_hat) {
+  const thresh = ll_hat - 1.920729;
+  const step   = (mle_val - lo_bound) / 500;
+  let lo = mle_val, hi = mle_val;
+  while (lo - step > lo_bound && profileFn(lo - step, data) > thresh) lo -= step;
+  const step2 = (hi_bound - mle_val) / 500;
+  while (hi + step2 < hi_bound && profileFn(hi + step2, data) > thresh) hi += step2;
+  return [lo, hi];
+}
+
+// ── State ──────────────────────────────────────────────────────────────────────
+
+let dataP = [], dataC = [];
+let profileParam = 'lambda';
+let showMle = true, showCi = true, showNull = false, showQuad = true;
+let profileChart = null;
+
+// ── Profile render ─────────────────────────────────────────────────────────────
+
+const N_GRID = 280;
+
+function renderProfile() {
+  const { lambda_hat, gamma_hat } = mle(dataP);
+  const n = dataP.length;
+  const trueLam = +document.getElementById('trueLam').value;
+  const trueGam = +document.getElementById('trueGam').value;
+
+  // Fisher info for SE
+  const fi = fisherInfo(lambda_hat, gamma_hat, dataP);
+
+  document.getElementById('sP_lam').textContent = lambda_hat.toFixed(4);
+  document.getElementById('sP_gam').textContent = gamma_hat.toFixed(4);
+  document.getElementById('sP_n').textContent   = n;
+
+  let mle_val, profileFn, trueVal, xlabel, color, lo_x, hi_x, se_val;
+
+  if (profileParam === 'lambda') {
+    mle_val   = lambda_hat;
+    profileFn = profileLambda;
+    trueVal   = trueLam;
+    xlabel    = 'λ';
+    color     = '#f7a94b';
+    se_val    = fi.se_lam;
+    lo_x      = Math.max(0.01, lambda_hat * 0.2);
+    hi_x      = lambda_hat * 3.0;
+  } else {
+    mle_val   = gamma_hat;
+    profileFn = profileGamma;
+    trueVal   = trueGam;
+    xlabel    = 'γ';
+    color     = '#a78bfa';
+    se_val    = fi.se_gam;
+    lo_x      = Math.max(0.05, gamma_hat * 0.2);
+    hi_x      = gamma_hat * 3.0;
+  }
+
+  const ll_hat = profileFn(mle_val, dataP);
+  const xs     = Array.from({length: N_GRID}, (_, i) => lo_x + i * (hi_x - lo_x) / (N_GRID - 1));
+  const ys     = xs.map(x => profileFn(x, dataP) - ll_hat);
+  const ysQuad = xs.map(x => -0.5 * ((x - mle_val) / se_val) ** 2);
+
+  const [ciLo, ciHi] = lrCI_profile(mle_val, profileFn, dataP, lo_x, hi_x, ll_hat);
+
+  // LR stat vs true
+  const ll_true = profileFn(trueVal, dataP);
+  const lr_stat = 2 * (ll_hat - ll_true);
+
+  document.getElementById('sP_se').textContent = se_val.toFixed(4);
+  document.getElementById('sP_ci').textContent = `[${ciLo.toFixed(3)}, ${ciHi.toFixed(3)}]`;
+  document.getElementById('sP_lr').textContent = lr_stat.toFixed(3);
+
+  // Annotations
+  const annotations = {};
+  const cutoff = -1.920729;
+
+  if (showMle) {
+    annotations.mleLine = {
+      type:'line', scaleID:'x', value:mle_val,
+      borderColor: color, borderWidth:1.5, borderDash:[4,3],
+      label:{ display:true, content:`${xlabel}̂ = ${mle_val.toFixed(3)}`,
+        backgroundColor: color + '22', color,
+        font:{family:'DM Mono',size:10}, padding:{x:6,y:3}, position:'start', yAdjust:10 }
+    };
+    annotations.mlePeak = {
+      type:'point', xValue:mle_val, yValue:0,
+      backgroundColor: color, radius:5, borderWidth:0
+    };
+  }
+
+  if (showCi) {
+    annotations.ciThresh = {
+      type:'line', scaleID:'y', value:cutoff,
+      borderColor:'#4fc4cf44', borderWidth:1.5, borderDash:[6,4],
+      label:{ display:true, content:'ℓ − 1.92',
+        backgroundColor:'#0e3035', color:'#4fc4cf',
+        font:{family:'DM Mono',size:9}, padding:{x:5,y:2}, position:'end' }
+    };
+    annotations.ciLo = {
+      type:'line', scaleID:'x', value:ciLo, borderColor:'#4fc4cf', borderWidth:1, borderDash:[3,3],
+      label:{ display:true, content:ciLo.toFixed(3), backgroundColor:'#0e3035', color:'#4fc4cf',
+        font:{family:'DM Mono',size:9}, padding:{x:4,y:2}, position:'end', yAdjust:-14 }
+    };
+    annotations.ciHi = {
+      type:'line', scaleID:'x', value:ciHi, borderColor:'#4fc4cf', borderWidth:1, borderDash:[3,3],
+      label:{ display:true, content:ciHi.toFixed(3), backgroundColor:'#0e3035', color:'#4fc4cf',
+        font:{family:'DM Mono',size:9}, padding:{x:4,y:2}, position:'end', yAdjust:-14 }
+    };
+  }
+
+  if (showNull) {
+    annotations.nullLine = {
+      type:'line', scaleID:'x', value:trueVal,
+      borderColor:'#f472b6', borderWidth:1.5, borderDash:[5,4],
+      label:{ display:true, content:`true = ${trueVal.toFixed(2)}`,
+        backgroundColor:'#3a1328', color:'#f472b6',
+        font:{family:'DM Mono',size:9}, padding:{x:5,y:2}, position:'start', yAdjust:30 }
+    };
+  }
+
+  const datasets = [
+    {
+      label: `Profile ℓ(${xlabel})`,
+      data: xs.map((x,i) => ({x, y: Math.max(-10, ys[i])})),
+      borderColor: color, borderWidth:2.5, pointRadius:0, tension:0.3,
+      fill:{ target:'origin', above: color+'18' }
+    }
+  ];
+
+  if (showQuad) {
+    datasets.push({
+      label: 'Quadratic approx.',
+      data: xs.map((x,i) => ({x, y: ysQuad[i]})),
+      borderColor:'#34d39988', borderWidth:1.5, borderDash:[5,4],
+      pointRadius:0, tension:0, fill:false
+    });
+  }
+
+  const opts = {
+    responsive:true, maintainAspectRatio:false, animation:{duration:180},
+    plugins:{
+      legend:{ display:showQuad, labels:{color:'#666',font:{family:'DM Mono',size:10},boxWidth:18} },
+      tooltip:{
+        callbacks:{
+          title: items => `${xlabel} = ${parseFloat(items[0].parsed.x).toFixed(4)}`,
+          label: items => `ℓ = ${items.parsed.y.toFixed(4)}`
+        },
+        backgroundColor:'#1a1e2a', borderColor:color, borderWidth:1,
+        titleColor:'#aaa', bodyColor:'#fff', padding:8,
+        bodyFont:{family:'DM Mono'}, titleFont:{family:'DM Mono',size:10}
+      },
+      annotation:{ annotations }
+    },
+    scales:{
+      x:{
+        type:'linear', min: lo_x,
+        title:{display:true, text:xlabel, color:'#555', font:{family:'DM Mono',size:11}},
+        ticks:{color:'#444', font:{family:'DM Mono',size:9}, maxTicksLimit:8},
+        grid:{color:'#1a1e2a'}
+      },
+      y:{
+        title:{display:true, text:`ℓ(${xlabel}) − ℓ(${xlabel}̂)`, color:'#555', font:{family:'DM Mono',size:10}},
+        ticks:{color:'#444', font:{family:'DM Mono',size:9}, maxTicksLimit:6},
+        grid:{color:'#1a1e2a'}, max:0.5, min:-10
+      }
+    }
+  };
+
+  const ctx = document.getElementById('profileChart').getContext('2d');
+  if (profileChart) {
+    profileChart.data.datasets = datasets;
+    profileChart.options = opts;
+    profileChart.update();
+  } else {
+    profileChart = new Chart(ctx, {type:'line', data:{datasets}, options:opts});
+  }
+}
+
+// ── Contour render ─────────────────────────────────────────────────────────────
+
+function renderContour() {
+  const { lambda_hat, gamma_hat } = mle(dataC);
+  const n = dataC.length;
+  const fi = fisherInfo(lambda_hat, gamma_hat, dataC);
+
+  document.getElementById('sC_lam').textContent   = lambda_hat.toFixed(4);
+  document.getElementById('sC_gam').textContent   = gamma_hat.toFixed(4);
+  document.getElementById('sC_selam').textContent = fi.se_lam.toFixed(4);
+  document.getElementById('sC_segam').textContent = fi.se_gam.toFixed(4);
+  document.getElementById('sC_corr').textContent  = fi.corr.toFixed(3);
+  document.getElementById('sC_n').textContent     = n;
+
+  const canvas = document.getElementById('contourCanvas');
+  const W = canvas.width  = canvas.offsetWidth;
+  const H = canvas.height = canvas.offsetHeight;
+  const ctx2 = canvas.getContext('2d');
+  ctx2.clearRect(0, 0, W, H);
+
+  const pad = {l:65, r:30, t:20, b:55};
+  const pw = W - pad.l - pad.r;
+  const ph = H - pad.t - pad.b;
+
+  // Domain
+  const lam_lo = Math.max(0.02, lambda_hat - 4.5 * fi.se_lam);
+  const lam_hi = lambda_hat + 4.5 * fi.se_lam;
+  const gam_lo = Math.max(0.05, gamma_hat  - 4.5 * fi.se_gam);
+  const gam_hi = gamma_hat  + 4.5 * fi.se_gam;
+
+  function cx(l) { return pad.l + (l - lam_lo) / (lam_hi - lam_lo) * pw; }
+  function cy(g) { return pad.t + (1 - (g - gam_lo) / (gam_hi - gam_lo)) * ph; }
+
+  const ll_hat = logLik(lambda_hat, gamma_hat, dataC);
+
+  // Pixel fill
+  const GRID = 110;
+  const imgData = ctx2.createImageData(pw, ph);
+  for (let py = 0; py < ph; py++) {
+    for (let px = 0; px < pw; px++) {
+      const lv = lam_lo + px / (pw-1) * (lam_hi - lam_lo);
+      const gv = gam_hi - py / (ph-1) * (gam_hi - gam_lo);
+      const delta = 2 * (ll_hat - logLik(lv, gv, dataC));
+      let r=13,g2=15,b=20;
+      if      (delta < 2.77) { r=30; g2=28; b=18; }
+      else if (delta < 4.61) { r=15; g2=28; b=35; }
+      else if (delta < 5.99) { r=22; g2=18; b=38; }
+      else if (delta < 9.21) { r=28; g2=14; b=28; }
+      const idx = 4*(py*pw+px);
+      imgData.data[idx]=r; imgData.data[idx+1]=g2; imgData.data[idx+2]=b; imgData.data[idx+3]=255;
+    }
+  }
+  ctx2.putImageData(imgData, pad.l, pad.t);
+
+  // Marching-squares contours
+  const contours = [
+    {delta:2.77, color:'#f7a94b'},
+    {delta:4.61, color:'#4fc4cf'},
+    {delta:5.99, color:'#a78bfa'},
+    {delta:9.21, color:'#f472b6'},
+  ];
+
+  const lams = Array.from({length:GRID}, (_,i) => lam_lo + i*(lam_hi-lam_lo)/(GRID-1));
+  const gams = Array.from({length:GRID}, (_,i) => gam_lo + i*(gam_hi-gam_lo)/(GRID-1));
+
+  for (const {delta, color} of contours) {
+    ctx2.strokeStyle = color; ctx2.lineWidth = 1.5;
+    ctx2.beginPath();
+    for (let gi = 0; gi < GRID-1; gi++) {
+      for (let gj = 0; gj < GRID-1; gj++) {
+        const d00 = 2*(ll_hat - logLik(lams[gi],   gams[gj],   dataC));
+        const d10 = 2*(ll_hat - logLik(lams[gi+1], gams[gj],   dataC));
+        const d01 = 2*(ll_hat - logLik(lams[gi],   gams[gj+1], dataC));
+        const d11 = 2*(ll_hat - logLik(lams[gi+1], gams[gj+1], dataC));
+        const ins = [d00<delta, d10<delta, d01<delta, d11<delta];
+        const code = ins.reduce((s,v,i)=>s|(v?1<<i:0),0);
+        if (code===0||code===15) continue;
+        function lerp(a,b,va,vb,iso){return a+(b-a)*(iso-va)/(vb-va);}
+        const pts=[];
+        if(ins[0]!==ins[1]) pts.push([lerp(lams[gi],lams[gi+1],d00,d10,delta), gams[gj]]);
+        if(ins[2]!==ins[3]) pts.push([lerp(lams[gi],lams[gi+1],d01,d11,delta), gams[gj+1]]);
+        if(ins[0]!==ins[2]) pts.push([lams[gi],   lerp(gams[gj],gams[gj+1],d00,d01,delta)]);
+        if(ins[1]!==ins[3]) pts.push([lams[gi+1], lerp(gams[gj],gams[gj+1],d10,d11,delta)]);
+        if(pts.length>=2){
+          ctx2.moveTo(cx(pts[0][0]), cy(pts[0][1]));
+          ctx2.lineTo(cx(pts[1][0]), cy(pts[1][1]));
+        }
+      }
+    }
+    ctx2.stroke();
+  }
+
+  // MLE point & crosshairs
+  ctx2.strokeStyle='#ffffff18'; ctx2.lineWidth=1; ctx2.setLineDash([4,4]);
+  ctx2.beginPath();
+  ctx2.moveTo(cx(lambda_hat), pad.t); ctx2.lineTo(cx(lambda_hat), pad.t+ph);
+  ctx2.moveTo(pad.l, cy(gamma_hat));  ctx2.lineTo(pad.l+pw, cy(gamma_hat));
+  ctx2.stroke(); ctx2.setLineDash([]);
+
+  ctx2.beginPath();
+  ctx2.arc(cx(lambda_hat), cy(gamma_hat), 5, 0, 2*Math.PI);
+  ctx2.fillStyle='#fff'; ctx2.fill();
+  ctx2.strokeStyle='#0d0f14'; ctx2.lineWidth=1.5; ctx2.stroke();
+
+  // Axes
+  ctx2.strokeStyle='#2e3448'; ctx2.lineWidth=1;
+  ctx2.strokeRect(pad.l, pad.t, pw, ph);
+
+  ctx2.font='9px DM Mono'; ctx2.textAlign='center'; ctx2.fillStyle='#444';
+  for (let i=0; i<=6; i++) {
+    const lv = lam_lo + i*(lam_hi-lam_lo)/6;
+    const x  = cx(lv);
+    ctx2.fillText(lv.toFixed(2), x, pad.t+ph+16);
+    ctx2.beginPath(); ctx2.moveTo(x,pad.t+ph); ctx2.lineTo(x,pad.t+ph+4);
+    ctx2.strokeStyle='#2e3448'; ctx2.stroke();
+  }
+  ctx2.fillStyle='#555'; ctx2.font='11px DM Mono';
+  ctx2.fillText('λ (scale)', pad.l+pw/2, H-6);
+
+  ctx2.textAlign='right'; ctx2.font='9px DM Mono'; ctx2.fillStyle='#444';
+  for (let i=0; i<=5; i++) {
+    const gv = gam_lo + i*(gam_hi-gam_lo)/5;
+    const y  = cy(gv);
+    ctx2.fillText(gv.toFixed(2), pad.l-6, y+3);
+    ctx2.beginPath(); ctx2.moveTo(pad.l,y); ctx2.lineTo(pad.l-4,y);
+    ctx2.strokeStyle='#2e3448'; ctx2.stroke();
+  }
+  ctx2.save();
+  ctx2.translate(14, pad.t+ph/2);
+  ctx2.rotate(-Math.PI/2);
+  ctx2.fillStyle='#555'; ctx2.font='11px DM Mono'; ctx2.textAlign='center';
+  ctx2.fillText('γ (shape)', 0, 0);
+  ctx2.restore();
+
+  // MLE label
+  ctx2.fillStyle='#ffffff88'; ctx2.font='9px DM Mono'; ctx2.textAlign='left';
+  ctx2.fillText(`(λ̂=${lambda_hat.toFixed(2)}, γ̂=${gamma_hat.toFixed(2)})`,
+    cx(lambda_hat)+8, cy(gamma_hat)-8);
+}
+
+// ── View switching ─────────────────────────────────────────────────────────────
+
+function switchView(v) {
+  document.getElementById('viewProfile').classList.toggle('active', v==='profile');
+  document.getElementById('viewContour').classList.toggle('active', v==='contour');
+  document.getElementById('tabProfile').classList.toggle('active', v==='profile');
+  document.getElementById('tabContour').classList.toggle('active', v==='contour');
+  if (v==='contour') setTimeout(renderContour, 50);
+}
+
+function setProfileParam(p) {
+  profileParam = p;
+  document.getElementById('psLam').className = 'ps-btn' + (p==='lambda' ? ' active-lam' : '');
+  document.getElementById('psGam').className = 'ps-btn' + (p==='gamma'  ? ' active-gam' : '');
+  document.getElementById('profileTitle').textContent = p==='lambda'
+    ? 'Profile Log-Likelihood  ℓ(λ | γ̂)'
+    : 'Profile Log-Likelihood  ℓ(γ | λ̂)';
+  renderProfile();
+}
+
+// ── Controls ───────────────────────────────────────────────────────────────────
+
+function bindSlider(id, valId, dec, cb) {
+  document.getElementById(id).addEventListener('input', function() {
+    document.getElementById(valId).textContent = parseFloat(this.value).toFixed(dec);
+    cb();
+  });
+}
+
+function regenP() {
+  dataP = generateWeibull(
+    +document.getElementById('trueLam').value,
+    +document.getElementById('trueGam').value,
+    +document.getElementById('sampleNP').value
+  );
+  renderProfile();
+}
+
+function regenC() {
+  dataC = generateWeibull(
+    +document.getElementById('trueLamC').value,
+    +document.getElementById('trueGamC').value,
+    +document.getElementById('sampleNC').value
+  );
+  renderContour();
+}
+
+bindSlider('trueLam',  'trueLamVal',  2, regenP);
+bindSlider('trueGam',  'trueGamVal',  2, regenP);
+bindSlider('sampleNP', 'nValP',       0, regenP);
+document.getElementById('regenBtnP').addEventListener('click', regenP);
+
+bindSlider('trueLamC', 'trueLamValC', 2, regenC);
+bindSlider('trueGamC', 'trueGamValC', 2, regenC);
+bindSlider('sampleNC', 'nValC',       0, regenC);
+document.getElementById('regenBtnC').addEventListener('click', regenC);
+
+document.getElementById('togMle' ).addEventListener('click', function() { showMle  = !showMle;  this.classList.toggle('active'); renderProfile(); });
+document.getElementById('togCi'  ).addEventListener('click', function() { showCi   = !showCi;   this.classList.toggle('active'); renderProfile(); });
+document.getElementById('togNull').addEventListener('click', function() { showNull = !showNull; this.classList.toggle('active'); renderProfile(); });
+document.getElementById('togQuad').addEventListener('click', function() { showQuad = !showQuad; this.classList.toggle('active'); renderProfile(); });
+
+window.addEventListener('resize', () => {
+  if (document.getElementById('viewContour').classList.contains('active')) renderContour();
+});
+
+// ── Init ───────────────────────────────────────────────────────────────────────
+
+const annotScript = document.createElement('script');
+annotScript.src = 'https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-annotation/3.0.1/chartjs-plugin-annotation.min.js';
+annotScript.onload = () => {
+  dataP = generateWeibull(2, 2, 50);
+  dataC = generateWeibull(2, 2, 50);
+  renderProfile();
+};
+document.head.appendChild(annotScript);
+</script>
+</body>
+</html>
